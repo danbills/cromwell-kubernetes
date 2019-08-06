@@ -11,12 +11,52 @@ import io.kubernetes.client.models.V1PodSpec
 import io.kubernetes.client.util.Config
 import java.io.IOException
 import java.util
+import java.util.Collections
 
+import com.google.api.client.googleapis.auth.oauth2.GoogleCredential
+import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
+import com.google.api.client.json.jackson2.JacksonFactory
+import com.google.api.services.iam.v1.{Iam, IamScopes}
+import com.google.api.services.iam.v1.model.{Binding, CreateServiceAccountRequest, ServiceAccount, SetIamPolicyRequest}
 import io.kubernetes.client.custom.Quantity
+
+object CromwellSA extends IOApp {
+  override def run(args: List[String]): IO[ExitCode] = IO {
+    val sa = new ServiceAccount;
+    sa.setDisplayName("Cromwell Runner")
+    val csar = new CreateServiceAccountRequest()
+    csar.setAccountId("cromwell-service-account")
+    csar.setServiceAccount(sa)
+
+    val credential =
+      GoogleCredential.getApplicationDefault()
+        .createScoped(Collections.singleton(IamScopes.CLOUD_PLATFORM));
+
+    val client =
+      new Iam.Builder(GoogleNetHttpTransport.newTrustedTransport(), JacksonFactory.getDefaultInstance, credential).setApplicationName("Cromwell Service Account creator").build()
+
+    val newSa: Iam#Projects#ServiceAccounts#Create = client.projects().serviceAccounts().create("projects/" + "broad-dsde-cromwell-dev", csar)
+
+    val b = new Binding()
+    b.setRole("storage.objectCreator")
+
+    val x = new SetIamPolicyRequest()
+
+    client.projects().serviceAccounts().setIamPolicy()
+    val executed = newSa.execute()
+    println(s"created sa: ${executed.getEmail}")
+
+    ExitCode.Success
+  }
+}
 
 
 object CromwellKube extends IOApp{
   override def run(args: List[String]): IO[ExitCode] = IO {
+    val serviceAccountFile = args.headOption
+    //create Service account
+
+    //use existing kubernetes cluster
     import collection.JavaConverters._
 
 
@@ -109,7 +149,7 @@ object CromwellKube extends IOApp{
     ExitCode.Success
   }
 
-  val conf =
+  def conf =
     """
       |database {
       |  profile = "slick.jdbc.MySQLProfile$"
